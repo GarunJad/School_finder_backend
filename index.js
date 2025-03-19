@@ -1,34 +1,29 @@
-// index.js
 import express from 'express';
 import bodyParser from 'body-parser';
-import {haversineDistance} from './utils.js';
+import { haversineDistance } from './utils.js';  // Assuming haversineDistance is defined in utils.js
 import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
+import pkg from 'pg';
+const { Pool } = pkg;  // Use pg for PostgreSQL
 
 // Configure dotenv to load environment variables
 dotenv.config();
 
-
 const app = express();
 app.use(bodyParser.json());
 
-// MySQL connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-  });
-  
-  pool.getConnection()
+// Supabase PostgreSQL connection pool
+const pool = new Pool({
+    connectionString: process.env.SUPABASE_DB_URL,  // Use Supabase DB URL from environment variables
+    ssl: { rejectUnauthorized: false }  // Supabase requires SSL connections
+});
+
+pool.connect()
     .then(() => {
-      console.log("Connected to the database successfully.");
+        console.log("Connected to the Supabase PostgreSQL database successfully.");
     })
     .catch((err) => {
-      console.error("Database connection failed:", err);
+        console.error("Database connection failed:", err);
     });
-// Utility function for distance calculation
-
 
 // Add School API
 app.post('/addSchool', async (req, res) => {
@@ -40,18 +35,19 @@ app.post('/addSchool', async (req, res) => {
     }
 
     try {
-        // Insert into MySQL database
-        const [result] = await pool.query(
-            'INSERT INTO schools (name, address, latitude, longitude) VALUES (?, ?, ?, ?)',
+        // Insert into PostgreSQL database
+        const result = await pool.query(
+            'INSERT INTO schools (name, address, latitude, longitude) VALUES ($1, $2, $3, $4) RETURNING id',
             [name, address, latitude, longitude]
         );
-        res.status(201).json({ message: 'School added successfully!', schoolId: result.insertId });
+        res.status(201).json({ message: 'School added successfully!', schoolId: result.rows[0].id });
     } catch (error) {
         console.error('Error adding school:', error);
         res.status(500).json({ error: 'Internal server error.' });
     }
 });
 
+// List Schools API
 app.get('/listSchools', async (req, res) => {
     const { latitude, longitude } = req.query;
 
@@ -62,15 +58,14 @@ app.get('/listSchools', async (req, res) => {
 
     try {
         // Fetch all schools from the database
-        const [schools] = await pool.query(`SELECT id, name, address, latitude, longitude FROM schools`);
+        const result = await pool.query('SELECT id, name, address, latitude, longitude FROM schools');
 
         // Calculate distances and filter schools within a certain range (e.g., 50 km)
         const userLatitude = parseFloat(latitude);
         const userLongitude = parseFloat(longitude);
         const maxDistance = 50; // Example: maximum distance of 50 kilometers
-       
 
-        const nearbySchools = schools
+        const nearbySchools = result.rows
             .map(school => {
                 const distance = haversineDistance(
                     userLatitude,
@@ -80,9 +75,9 @@ app.get('/listSchools', async (req, res) => {
                 );
                 return { ...school, distance };
             })
-            /*.filter(school => school.distance <= maxDistance) // Filter out schools beyond 50km*/
+            //.filter(school => school.distance <= maxDistance) // Filter out schools beyond 50km
             .sort((a, b) => a.distance - b.distance); // Sort by distance (nearest first)
-            
+
         // Send the filtered list of schools as the response
         res.status(200).json(nearbySchools);
     } catch (error) {
@@ -90,6 +85,7 @@ app.get('/listSchools', async (req, res) => {
         res.status(500).json({ error: 'Error fetching schools' });
     }
 });
+
 // Start the server
 const PORT = 3000;
 app.listen(PORT, () => {
