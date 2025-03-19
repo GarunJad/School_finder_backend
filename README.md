@@ -4,7 +4,7 @@ This repository contains the backend code for the **School Finder System**, a we
 
 ## Overview
 
-The backend of this system is built using **Node.js** and **Express.js**, with a **MySQL** database to store and manage school information. The APIs provided by this system allow users to:
+The backend of this system is built using **Node.js** and **Express.js**, with a **PostgreSQL** database to store and manage school information. The APIs provided by this system allow users to:
 
 - Find schools within a specified radius based on latitude and longitude.
 - Add new schools to the database.
